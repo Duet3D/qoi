@@ -460,9 +460,10 @@ benchmark_result_t benchmark_image(const char *path) {
 
 		res = qoi_decode_body(&dc, encoded_qoi + res, encoded_qoi_size - res, pixels_qoi, pixels_qoi_size);
 		assert(res == pixels_qoi_size);
+
+		res = memcmp(pixels, pixels_qoi, pixels_qoi_size);
+		assert(res == 0);
 	}
-
-
 
 	benchmark_result_t res = {0};
 	res.count = 1;
