@@ -458,7 +458,7 @@ benchmark_result_t benchmark_image(const char *path) {
 		res = qoi_decode_header(encoded_qoi, encoded_qoi_size, &dc);
 		assert(res > 0);
 
-		res = qoi_decode_data(&dc, encoded_qoi + res, encoded_qoi_size - res, pixels_qoi, pixels_qoi_size);
+		res = qoi_decode_body(&dc, encoded_qoi + res, encoded_qoi_size - res, pixels_qoi, pixels_qoi_size);
 		assert(res == pixels_qoi_size);
 	}
 
