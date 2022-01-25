@@ -325,6 +325,7 @@ void *qoi_decode(const void *data, int size, qoi_desc *desc, int channels);
 
 int qoi_decode_init(qoi_desc *desc);
 int qoi_decode_header(const void *data, int size, qoi_desc *desc);
+int qoi_decode_data(qoi_desc *desc, const void *data, int size, void *data_out, int size_out);
 
 #ifdef __cplusplus
 }
@@ -541,6 +542,7 @@ int qoi_decode_header(const void *data, int size, qoi_desc *desc) {
 
 	if (
 		data == NULL || desc == NULL ||
+		desc->decoder_state != qoi_decoder_header ||
 		size < QOI_HEADER_SIZE + (int)sizeof(qoi_padding)
 	) {
 		return -1;
@@ -569,6 +571,8 @@ int qoi_decode_header(const void *data, int size, qoi_desc *desc) {
 	desc->start.rgba.b = 0;
 	desc->start.rgba.a = 255;
 
+	desc->decoder_state = qoi_decoder_body;
+
 	return p;
 }
 
@@ -584,6 +588,7 @@ int qoi_decode_data(qoi_desc *desc, const void *data, int size, void *data_out, 
 
 	if (
 		desc == NULL || data == NULL || size == 0 ||
+		desc->decoder_state != qoi_decoder_body ||
 		data_out == NULL || size_out < desc->channels
 	) {
 		return -1;
@@ -595,8 +600,7 @@ int qoi_decode_data(qoi_desc *desc, const void *data, int size, void *data_out, 
 		desc->width == 0 || desc->height == 0 ||
 		desc->channels < 3 || desc->channels > 4 ||
 		desc->colorspace > 1 ||
-		desc->height >= QOI_PIXELS_MAX / desc->width ||
-		desc->channels <= size_out
+		desc->height >= QOI_PIXELS_MAX / desc->width
 	) {
 		return -2;
 	}
