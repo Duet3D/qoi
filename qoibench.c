@@ -445,6 +445,23 @@ benchmark_result_t benchmark_image(const char *path) {
 		free(pixels_qoi);
 	}
 
+	// test new functions
+	{
+		qoi_desc dc;
+		int res;
+		int pixels_qoi_size = w * h * channels;
+		char *pixels_qoi = malloc(pixels_qoi_size);
+
+		res = qoi_decode_init(&dc);
+		assert(res == 0);
+
+		res = qoi_decode_header(encoded_qoi, encoded_qoi_size, &dc);
+		assert(res > 0);
+
+		res = qoi_decode_data(&dc, encoded_qoi + res, encoded_qoi_size - res, pixels_qoi, pixels_qoi_size);
+		assert(res == pixels_qoi_size);
+	}
+
 
 
 	benchmark_result_t res = {0};
