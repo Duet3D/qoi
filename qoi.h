@@ -325,7 +325,7 @@ void *qoi_decode(const void *data, int size, qoi_desc *desc, int channels);
 
 int qoi_decode_init(qoi_desc *desc);
 int qoi_decode_header(const void *data, int size, qoi_desc *desc);
-int qoi_decode_data(qoi_desc *desc, const void *data, int size, void *data_out, int size_out);
+int qoi_decode_body(qoi_desc *desc, const void *data, int size, void *data_out, int size_out);
 
 #ifdef __cplusplus
 }
@@ -576,7 +576,7 @@ int qoi_decode_header(const void *data, int size, qoi_desc *desc) {
 	return p;
 }
 
-int qoi_decode_data(qoi_desc *desc, const void *data, int size, void *data_out, int size_out) {
+int qoi_decode_body(qoi_desc *desc, const void *data, int size, void *data_out, int size_out) {
 	const unsigned char *bytes;
 	unsigned int header_magic;
 	unsigned char *pixels;
