@@ -667,7 +667,7 @@ int qoi_decode_body(qoi_desc *desc, const void *data, int size, void *data_out, 
 	}
 
 	// save start pixel for next chunk
-	memcpy(&desc->start.rgba, &px.rgba, sizeof(px.rgba));
+	memcpy(&desc->start.rgba, &px.rgba, sizeof(desc->start.rgba));
 
 	return px_pos;
 }
