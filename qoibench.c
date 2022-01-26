@@ -32,6 +32,7 @@ SOFTWARE.
 */
 
 #include <stdio.h>
+#include <sys/param.h>
 #include <dirent.h>
 #include <png.h>
 
@@ -491,7 +492,7 @@ benchmark_result_t benchmark_image(const char *path) {
 			assert(res <= encoded_qoi_size - size_done);
 			assert(pixel_qoi_count * sizeof(qoi_rgba_t) <= sizeof(buffer));
 
-			int copysize = pixels_qoi_size - offset < pixel_qoi_count * sizeof(qoi_rgba_t)  ? pixels_qoi_size - offset : pixel_qoi_count * sizeof(qoi_rgba_t);
+			int copysize = MIN(pixels_qoi_size - offset, pixel_qoi_count * sizeof(qoi_rgba_t));
 			memcpy(pixels_qoi + offset, buffer, copysize);
 			offset += copysize;
 
