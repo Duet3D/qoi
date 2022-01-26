@@ -259,17 +259,19 @@ typedef union {
 } qoi_rgba_t;
 
 
+enum qoi_decoder_state {
+	qoi_decoder_header,
+	qoi_decoder_body,
+	qoi_decoder_error,
+};
+
 typedef struct {
 	unsigned int width;
 	unsigned int height;
 	unsigned char channels;
 	unsigned char colorspace;
 
-	enum {
-		qoi_decoder_header,
-		qoi_decoder_body,
-		qoi_decoder_error,
-	} decoder_state;
+	enum qoi_decoder_state decoder_state;
 
 	size_t pixels_count;
 
@@ -330,6 +332,8 @@ void *qoi_decode(const void *data, int size, qoi_desc *desc, int channels);
 int qoi_decode_init(qoi_desc *desc);
 int qoi_decode_header(const void *data, int size, qoi_desc *desc);
 int qoi_decode_body(qoi_desc *desc, const void *data, int size, void *buffer, int buffer_size, int *pixel_count);
+
+int qoi_decode_chunked(qoi_desc *desc, const void *data, int size, void *buffer, int buffer_size, int *pixel_count);
 
 #ifdef __cplusplus
 }
@@ -615,7 +619,7 @@ int qoi_decode_body(qoi_desc *desc, const void *data, int size, void *buffer, in
 	// restore last pixel for chunk
 	px = desc->start;
 
-	pixels = buffer;
+	pixels = (unsigned char *)buffer;
 	*pixel_count = 0;
 
 	bytes = (const unsigned char *)data;
@@ -670,6 +674,31 @@ int qoi_decode_body(qoi_desc *desc, const void *data, int size, void *buffer, in
 	return p;
 }
 
+// negative on error
+// number of bytes read of data and pixels decoded in pixel_count
+int qoi_decode_chunked(qoi_desc *desc, const void *data, int size, void *buffer, int buffer_size, int *pixel_count)
+{
+	int res;
+
+	if (!desc || !pixel_count) {
+		return -1;
+	}
+
+	*pixel_count = 0;
+
+	switch (desc->decoder_state) {
+	case qoi_decoder_header:
+		res = qoi_decode_header(data, size, desc);
+		break;
+	case qoi_decoder_body:
+		res = qoi_decode_body(desc, data, size, buffer, buffer_size, pixel_count);
+		break;
+	default:
+		return -2;
+	}
+
+	return res;
+}
 
 void *qoi_decode(const void *data, int size, qoi_desc *desc, int channels) {
 	const unsigned char *bytes;
