@@ -612,8 +612,8 @@ int qoi_decode_body(qoi_desc *desc, const void *data, int size, void *buffer, in
 
 	channels = desc->channels;
 
-	// load start pixel of chunk
-	memcpy(&px, &desc->start, sizeof(px));
+	// restore last pixel for chunk
+	px = desc->start;
 
 	pixels = buffer;
 	*pixel_count = 0;
@@ -665,7 +665,7 @@ int qoi_decode_body(qoi_desc *desc, const void *data, int size, void *buffer, in
 	}
 
 	// save start pixel for next chunk
-	memcpy(&desc->start, &px, sizeof(desc->start));
+	desc->start = px;
 
 	return p;
 }
