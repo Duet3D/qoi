@@ -271,6 +271,9 @@ typedef struct {
 		qoi_decoder_error,
 	} decoder_state;
 
+	size_t pixels_count;
+
+	qoi_rgba_t index[64];
 	qoi_rgba_t start;
 
 } qoi_desc;
@@ -535,7 +538,6 @@ int qoi_decode_header(const void *data, int size, qoi_desc *desc) {
 	const unsigned char *bytes;
 	unsigned int header_magic;
 	unsigned char *pixels;
-	qoi_rgba_t index[64];
 	qoi_rgba_t px;
 	int px_len, chunks_len, px_pos;
 	int p = 0, run = 0;
@@ -571,6 +573,10 @@ int qoi_decode_header(const void *data, int size, qoi_desc *desc) {
 	desc->start.rgba.b = 0;
 	desc->start.rgba.a = 255;
 
+	desc->pixels_count = 0;
+	QOI_ZEROARR(desc->index);
+
+
 	desc->decoder_state = qoi_decoder_body;
 
 	return p;
@@ -580,7 +586,6 @@ int qoi_decode_body(qoi_desc *desc, const void *data, int size, void *data_out, 
 	const unsigned char *bytes;
 	unsigned int header_magic;
 	unsigned char *pixels;
-	qoi_rgba_t index[64];
 	qoi_rgba_t px;
 	int px_len, chunks_len, px_pos;
 	int p = 0, run = 0;
@@ -610,8 +615,6 @@ int qoi_decode_body(qoi_desc *desc, const void *data, int size, void *data_out, 
 	px_len = size_out;
 	pixels = data_out;
 
-	QOI_ZEROARR(index);
-
 	// load start pixel of chunk
 	memcpy(&px.rgba, &desc->start.rgba, sizeof(px.rgba));
 
@@ -635,7 +638,7 @@ int qoi_decode_body(qoi_desc *desc, const void *data, int size, void *data_out, 
 				px.rgba.a = bytes[p++];
 			}
 			else if ((b1 & QOI_MASK_2) == QOI_OP_INDEX) {
-				px = index[b1];
+				px = desc->index[b1];
 			}
 			else if ((b1 & QOI_MASK_2) == QOI_OP_DIFF) {
 				px.rgba.r += ((b1 >> 4) & 0x03) - 2;
@@ -653,7 +656,7 @@ int qoi_decode_body(qoi_desc *desc, const void *data, int size, void *data_out, 
 				run = (b1 & 0x3f);
 			}
 
-			index[QOI_COLOR_HASH(px) % 64] = px;
+			desc->index[QOI_COLOR_HASH(px) % 64] = px;
 		}
 
 		if (channels == 4) {
@@ -664,6 +667,8 @@ int qoi_decode_body(qoi_desc *desc, const void *data, int size, void *data_out, 
 			pixels[px_pos + 1] = px.rgba.g;
 			pixels[px_pos + 2] = px.rgba.b;
 		}
+
+		desc->pixels_count++;
 	}
 
 	// save start pixel for next chunk
