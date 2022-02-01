@@ -456,11 +456,16 @@ benchmark_result_t benchmark_image(const char *path) {
 		int res;
 		int size_done = 0;
 		int offset = 0;
+
 		int pixels_qoi_size = w * h * sizeof(qoi_rgba_t);
 		unsigned char *pixels_qoi = malloc(pixels_qoi_size);
+
+		assert(pixels_qoi);
 		memset(pixels_qoi, 0xaa, pixels_qoi_size);
-#define QOI_TEST_CHUNK_SIZE (1 * sizeof(qoi_rgba_t))
-		char buffer[QOI_TEST_CHUNK_SIZE];
+
+#define QOI_TEST_CHUNK_SIZE (64)
+		qoi_rgba_t buffer[QOI_TEST_CHUNK_SIZE];
+
 		int pixel_qoi_count;
 		int pixel_count = 0;
 
@@ -504,9 +509,11 @@ benchmark_result_t benchmark_image(const char *path) {
 
 		} while (res >= 0 && pixel_qoi_count > 0 && offset < pixels_qoi_size && size_done < encoded_qoi_size);
 
+#define QOIBENCH_PADDING 8
+		assert(encoded_qoi_size == (size_done + QOIBENCH_PADDING));
 		printf("here res %d encoded size %d/%d pixel size %d/%d pixel count %d/%d\n",
 			res,
-			encoded_qoi_size, size_done,
+			encoded_qoi_size, size_done + QOIBENCH_PADDING,
 			w * h * channels, offset,
 			dc.pixels_count, w * h);
 
