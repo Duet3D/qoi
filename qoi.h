@@ -262,6 +262,7 @@ typedef union {
 enum qoi_decoder_state {
 	qoi_decoder_header,
 	qoi_decoder_body,
+	qoi_decoder_done,
 	qoi_decoder_error,
 };
 
@@ -334,6 +335,7 @@ int qoi_decode_header(const void *data, int size, qoi_desc *desc);
 int qoi_decode_body(qoi_desc *desc, const void *data, int size, void *buffer, int buffer_size, int *pixel_count);
 
 int qoi_decode_chunked(qoi_desc *desc, const void *data, int size, void *buffer, int buffer_size, int *pixel_count);
+enum qoi_decoder_state qoi_decode_state_get(qoi_desc *desc);
 
 #ifdef __cplusplus
 }
@@ -623,7 +625,11 @@ int qoi_decode_body(qoi_desc *desc, const void *data, int size, void *buffer, in
 	*pixel_count = 0;
 
 	bytes = (const unsigned char *)data;
-	for (px_pos = 0; px_pos < buffer_size && p < size; px_pos += sizeof(qoi_rgba_t)) {
+	for (px_pos = 0;
+	     desc->pixels_count < desc->width * desc->height &&
+	     px_pos < buffer_size && p < size;
+	     px_pos += sizeof(qoi_rgba_t)) {
+
 		if (desc->run > 0) {
 			desc->run--;
 		}
@@ -666,7 +672,11 @@ int qoi_decode_body(qoi_desc *desc, const void *data, int size, void *buffer, in
 		*(qoi_rgba_t*)(pixels + px_pos) = px;
 
 		(*pixel_count)++;
+		desc->pixels_count++;
 	}
+
+	if (desc->pixels_count == desc->width * desc->height)
+		desc->decoder_state = qoi_decoder_done;
 
 	// save start pixel for next chunk
 	desc->start = px;
@@ -693,12 +703,24 @@ int qoi_decode_chunked(qoi_desc *desc, const void *data, int size, void *buffer,
 	case qoi_decoder_body:
 		res = qoi_decode_body(desc, data, size, buffer, buffer_size, pixel_count);
 		break;
+	case qoi_decoder_done:
+		return 0;
 	default:
 		return -2;
 	}
 
 	return res;
 }
+
+enum qoi_decoder_state qoi_decode_state_get(qoi_desc *desc)
+{
+	if (!desc) {
+		return qoi_decoder_error;
+	}
+
+	return desc->decoder_state;
+}
+
 
 void *qoi_decode(const void *data, int size, qoi_desc *desc, int channels) {
 	const unsigned char *bytes;
