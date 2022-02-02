@@ -262,6 +262,7 @@ typedef union {
 enum qoi_decoder_state {
 	qoi_decoder_header,
 	qoi_decoder_body,
+	qoi_decoder_body_last,
 	qoi_decoder_done,
 	qoi_decoder_error,
 };
@@ -279,7 +280,8 @@ typedef struct {
 	qoi_rgba_t index[64];
 	int run;
 	qoi_rgba_t start;
-
+	unsigned char last_bytes[4];
+	size_t last_bytes_size;
 } qoi_desc;
 
 #ifndef QOI_NO_STDIO
@@ -333,6 +335,7 @@ void *qoi_decode(const void *data, int size, qoi_desc *desc, int channels);
 int qoi_decode_init(qoi_desc *desc);
 int qoi_decode_header(const void *data, int size, qoi_desc *desc);
 int qoi_decode_body(qoi_desc *desc, const void *data, int size, void *buffer, int buffer_size, int *pixel_count);
+int qoi_decode_body_last(qoi_desc *desc, const void *data, int size, void *buffer, int buffer_size, int *pixel_count);
 
 int qoi_decode_chunked(qoi_desc *desc, const void *data, int size, void *buffer, int buffer_size, int *pixel_count);
 enum qoi_decoder_state qoi_decode_state_get(qoi_desc *desc);
@@ -349,6 +352,13 @@ Implementation */
 #ifdef QOI_IMPLEMENTATION
 #include <stdlib.h>
 #include <string.h>
+
+#define QOI_DEBUG 0
+#if QOI_DEBUG
+#define qoi_dbg(fmt, args...)		do { printf("%s(%d): " fmt, __FUNCTION__, __LINE__, ##args); } while(0)
+#else
+#define qoi_dbg(fmt, args...)		do {} while(0)
+#endif
 
 #ifndef QOI_MALLOC
 	#define QOI_MALLOC(sz) malloc(sz)
@@ -549,7 +559,7 @@ int qoi_decode_header(const void *data, int size, qoi_desc *desc) {
 	if (
 		data == NULL || desc == NULL ||
 		desc->decoder_state != qoi_decoder_header ||
-		size < QOI_HEADER_SIZE + (int)sizeof(qoi_padding)
+		size < QOI_HEADER_SIZE
 	) {
 		return -1;
 	}
@@ -588,6 +598,8 @@ int qoi_decode_header(const void *data, int size, qoi_desc *desc) {
 	return p;
 }
 
+#include "stdio.h"
+
 // return negative number on error or processed bytes from data
 // pixels return number of decoded pixel_count (qoi_rgba_t)
 int qoi_decode_body(qoi_desc *desc, const void *data, int size, void *buffer, int buffer_size, int *pixel_count) {
@@ -596,7 +608,6 @@ int qoi_decode_body(qoi_desc *desc, const void *data, int size, void *buffer, in
 	qoi_rgba_t px;
 	int px_pos;
 	int p = 0;
-	int channels = 0;
 
 	if (
 		desc == NULL || data == NULL || size == 0 ||
@@ -604,7 +615,7 @@ int qoi_decode_body(qoi_desc *desc, const void *data, int size, void *buffer, in
 		buffer == NULL || buffer_size < desc->channels ||
 		pixel_count == NULL
 	) {
-		return -1;
+		return -3;
 	}
 
 	if (
@@ -613,10 +624,8 @@ int qoi_decode_body(qoi_desc *desc, const void *data, int size, void *buffer, in
 		desc->colorspace > 1 ||
 		desc->height >= QOI_PIXELS_MAX / desc->width
 	) {
-		return -2;
+		return -4;
 	}
-
-	channels = desc->channels;
 
 	// restore last pixel for chunk
 	px = desc->start;
@@ -625,16 +634,40 @@ int qoi_decode_body(qoi_desc *desc, const void *data, int size, void *buffer, in
 	*pixel_count = 0;
 
 	bytes = (const unsigned char *)data;
-	for (px_pos = 0;
-	     desc->pixels_count < desc->width * desc->height &&
-	     px_pos < buffer_size && p < size;
-	     px_pos += sizeof(qoi_rgba_t)) {
+	for (px_pos = 0; px_pos < buffer_size && p < size; px_pos += sizeof(qoi_rgba_t)) {
 
+		if (desc->pixels_count >= desc->width * desc->height) {
+			// everything decoded
+			break;
+		}
 		if (desc->run > 0) {
 			desc->run--;
 		}
 		else if (p < size) {
-			int b1 = bytes[p++];
+			int b1 = bytes[p];
+
+			// check if command is complete
+			if (
+				(b1 == QOI_OP_RGB && p + 4 > size) ||
+				(b1 == QOI_OP_RGBA && p + 5 > size) ||
+				((b1 & QOI_MASK_2) == QOI_OP_LUMA && p + 2 > size)
+			) {
+				desc->last_bytes_size = size - p;
+
+				qoi_dbg("incomplete command %02x %d %d %d\n", b1, desc->last_bytes_size, p, size);
+
+				if (desc->last_bytes_size > sizeof(desc->last_bytes_size)) {
+					qoi_dbg("buffer too small\n");
+					return -5;
+				}
+
+				memcpy(desc->last_bytes, &bytes[p], desc->last_bytes_size);
+				desc->decoder_state = qoi_decoder_body_last;
+				p = size;
+				break;
+			}
+
+			p++;
 
 			if (b1 == QOI_OP_RGB) {
 				px.rgba.r = bytes[p++];
@@ -684,6 +717,53 @@ int qoi_decode_body(qoi_desc *desc, const void *data, int size, void *buffer, in
 	return p;
 }
 
+int qoi_decode_body_last(qoi_desc *desc, const void *data, int size, void *buffer, int buffer_size, int *pixel_count) {
+
+	if (
+		!desc || desc->last_bytes_size == 0 ||
+		desc->last_bytes_size > sizeof(desc->last_bytes) ||
+		size < sizeof(qoi_rgba_t)
+	) {
+		return -10;
+	}
+
+	unsigned char data_last[sizeof(desc->last_bytes) + 1];
+	int data_last_size = 0;
+	int b1 = desc->last_bytes[0];
+
+	memcpy(data_last, desc->last_bytes, desc->last_bytes_size);
+
+	if (b1 == QOI_OP_RGB) {
+		data_last_size = 4;
+	} else if (b1 == QOI_OP_RGBA) {
+		data_last_size = 5;
+	} else if ((b1 & QOI_MASK_2) == QOI_OP_LUMA) {
+		data_last_size = 2;
+	} else {
+		return -11;
+	}
+
+	memcpy(&data_last[desc->last_bytes_size], data, data_last_size - desc->last_bytes_size);
+	// TODO cleanup internal state handling
+	desc->decoder_state = qoi_decoder_body;
+
+	int res = qoi_decode_body(desc, data_last, data_last_size, buffer, buffer_size, pixel_count);
+	if (res != data_last_size) {
+		return -12;
+	}
+
+	if (res < 0) {
+		return -13;
+	}
+
+	res -= desc->last_bytes_size;
+
+	desc->last_bytes_size = 0;
+
+	return res;
+
+}
+
 // negative on error
 // number of bytes read of data and pixels decoded in pixel_count
 int qoi_decode_chunked(qoi_desc *desc, const void *data, int size, void *buffer, int buffer_size, int *pixel_count)
@@ -699,6 +779,9 @@ int qoi_decode_chunked(qoi_desc *desc, const void *data, int size, void *buffer,
 	switch (desc->decoder_state) {
 	case qoi_decoder_header:
 		res = qoi_decode_header(data, size, desc);
+		break;
+	case qoi_decoder_body_last:
+		res = qoi_decode_body_last(desc, data, size, buffer, buffer_size, pixel_count);
 		break;
 	case qoi_decoder_body:
 		res = qoi_decode_body(desc, data, size, buffer, buffer_size, pixel_count);
