@@ -32,6 +32,7 @@ SOFTWARE.
 */
 
 #include <stdio.h>
+#include <sys/param.h>
 #include <dirent.h>
 #include <png.h>
 
@@ -436,6 +437,7 @@ benchmark_result_t benchmark_image(const char *path) {
 
 	// Verify QOI Output
 
+#if 1
 	if (!opt_noverify) {
 		qoi_desc dc;
 		void *pixels_qoi = qoi_decode(encoded_qoi, encoded_qoi_size, &dc, channels);
@@ -444,8 +446,140 @@ benchmark_result_t benchmark_image(const char *path) {
 		}
 		free(pixels_qoi);
 	}
+#endif
+
+	// test individual functions
+#if 1
+	if (channels == 4)
+	{
+		qoi_desc dc;
+		int res;
+		int size_done = 0;
+		int offset = 0;
+
+		printf("testing file: %s\n", path);
+
+		int pixels_qoi_size = w * h * sizeof(qoi_rgba_t);
+		unsigned char *pixels_qoi = malloc(pixels_qoi_size);
+
+		assert(pixels_qoi);
+		memset(pixels_qoi, 0xaa, pixels_qoi_size);
+
+#define QOI_TEST_CHUNK_SIZE (64)
+		qoi_rgba_t buffer[QOI_TEST_CHUNK_SIZE];
+
+		int pixel_qoi_count;
+		int pixel_count = 0;
+
+		res = qoi_decode_init(&dc);
+		assert(res == 0);
+
+		res = qoi_decode_header(encoded_qoi, encoded_qoi_size, &dc);
+		assert(res == 14);
+		printf("header length %d\n", res);
+
+		pixels_qoi_size = dc.width * dc.height * sizeof(qoi_rgba_t);
+		assert(pixels_qoi_size == w * h * sizeof(qoi_rgba_t));
+
+		printf("w %d h %d ch %d color %d pixel %d pixel_buffer_size %d\n",
+			dc.width, dc.height, dc.channels, dc.colorspace,
+			dc.width * dc.height, dc.width * dc.height * dc.channels);
+
+		offset = 0;
+		size_done = res;
+
+		int i = 0;
+
+		do {
+			i++;
+			size_t decode_size = MIN(encoded_qoi_size - size_done, 1024);
+			res = qoi_decode_body(&dc, ((const unsigned char *)encoded_qoi) + size_done, decode_size, buffer, sizeof(buffer), &pixel_qoi_count);
 
 
+			assert(res <= encoded_qoi_size - size_done);
+			assert(pixel_qoi_count * sizeof(qoi_rgba_t) <= sizeof(buffer));
+
+			int copysize = MIN(pixels_qoi_size - offset, pixel_qoi_count * sizeof(qoi_rgba_t));
+			memcpy(pixels_qoi + offset, buffer, copysize);
+			offset += copysize;
+
+			size_done += res;
+			pixel_count += pixel_qoi_count;
+			/*printf("res %d size_done %d/%d offset %d/%d pixel_qoi_count %d pixel_count %d/%d\n",*/
+				/*res, size_done, encoded_qoi_size, offset, pixels_qoi_size, pixel_qoi_count, pixel_count, dc.width * dc.height);*/
+
+		} while (res >= 0 && pixel_qoi_count > 0 && offset < pixels_qoi_size && size_done < encoded_qoi_size);
+
+#define QOIBENCH_PADDING 8
+		printf("here res %d encoded size %d/%d pixel size %d/%d pixel count %d/%d\n",
+			res,
+			size_done + QOIBENCH_PADDING, encoded_qoi_size,
+			w * h * channels, offset,
+			dc.pixels_count, w * h);
+		assert(encoded_qoi_size == (size_done + QOIBENCH_PADDING));
+
+		res = memcmp(pixels, pixels_qoi, pixels_qoi_size);
+		printf("compare difference %d\n", res);
+		assert(res == 0);
+
+		free(pixels_qoi);
+	}
+#endif
+#if 1
+	// test combined functions
+	if (channels == 4)
+	{
+		qoi_desc dc;
+		int res = 0;
+		int size_done = 0;
+		int offset = 0;
+
+		printf("testing file: %s\n", path);
+
+		int pixels_qoi_size = w * h * sizeof(qoi_rgba_t);
+		unsigned char *pixels_qoi = malloc(pixels_qoi_size);
+
+		assert(pixels_qoi);
+		memset(pixels_qoi, 0, pixels_qoi_size);
+
+		qoi_rgba_t buffer[QOI_TEST_CHUNK_SIZE];
+
+		res = qoi_decode_init(&dc);
+		assert(res == 0);
+
+		int pixel_qoi_count = 0;
+		int pixel_count = 0;
+
+		do {
+			size_t decode_size = MIN(encoded_qoi_size - size_done, 17);
+			res = qoi_decode_chunked(&dc, ((const unsigned char *)encoded_qoi) + size_done, decode_size, buffer, sizeof(buffer), &pixel_qoi_count);
+
+			assert(res >= 0);
+			assert(pixel_qoi_count * sizeof(qoi_rgba_t) <= sizeof(buffer));
+
+			size_done += res;
+
+			int copysize = pixel_qoi_count * sizeof(qoi_rgba_t);
+			memcpy(pixels_qoi + offset, buffer, copysize);
+			offset += copysize;
+
+			pixel_count += pixel_qoi_count;
+
+		} while (qoi_decode_state_get(&dc) != qoi_decoder_done);
+
+#define QOIBENCH_PADDING 8
+		printf("decode_chunked res %d encoded size %d/%d pixel size %d/%d pixel count %d/%d\n",
+			res,
+			size_done + QOIBENCH_PADDING, encoded_qoi_size,
+			w * h * channels, offset,
+			dc.pixels_count, w * h);
+		assert(encoded_qoi_size == (size_done + QOIBENCH_PADDING));
+
+		res = memcmp(pixels, pixels_qoi, pixels_qoi_size);
+		printf("compare difference %d\n", res);
+		assert(res == 0);
+	}
+#endif
 
 	benchmark_result_t res = {0};
 	res.count = 1;
