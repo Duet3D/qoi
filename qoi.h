@@ -722,7 +722,7 @@ int qoi_decode_body_last(qoi_desc *desc, const void *data, int size, void *buffe
 	if (
 		!desc || desc->last_bytes_size == 0 ||
 		desc->last_bytes_size > sizeof(desc->last_bytes) ||
-		size < sizeof(qoi_rgba_t)
+		size < (int)sizeof(qoi_rgba_t)
 	) {
 		return -10;
 	}
